@@ -1,0 +1,5 @@
+yfinance
+pandas
+pyarrow
+psycopg2-binary
+python-dotenv
