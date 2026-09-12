@@ -89,9 +89,9 @@ def main():
 
 
     # Save raw
-    #output_path = "/home/isaac/stock_market_pipeline/raw_data/raw_stock_data.parquet"
-    output_dir = "stock_market_pipeline/airflow/raw_data"
-    
+    # Shared directory mounted into every Airflow task container.
+    output_dir = "/opt/airflow/raw_data"
+
     load_raw_data(raw_data2, output_dir)
 
     

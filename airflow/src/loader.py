@@ -66,7 +66,8 @@ def load_data_to_db(parquet_dir, db_url, table_name):
 
     print(f"Loaded {len(df)} new records into {table_name}")
 if __name__ == "__main__":
-    parquet_file = "/home/isaac/stock_market_pipeline/raw_data/"
+    # Shared directory mounted into every Airflow task container.
+    parquet_file = "/opt/airflow/raw_data"
     db_host = os.getenv("DB_HOST")
     db_name = os.getenv("DB_NAME")
     db_user = os.getenv("DB_USER")
