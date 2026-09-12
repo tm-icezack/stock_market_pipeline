@@ -1,5 +1,9 @@
-yfinance
-pandas
-pyarrow
-psycopg2-binary
-python-dotenv
+# Pinned against apache/airflow:3.0.2 (Python 3.12).
+yfinance==0.2.54
+pandas==2.1.4
+pyarrow==16.1.0
+psycopg2-binary==2.9.10
+python-dotenv==1.1.0
+frozendict==2.4.7
+multitasking==0.0.13
+peewee==4.5.1
