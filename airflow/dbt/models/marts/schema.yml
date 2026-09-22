@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: fct_stock_prices
+    description: Clean daily stock prices for AAL, GOOGL, and TSLA.
+    columns:
+      - name: date
+        description: Trading date.
+        tests:
+          - not_null
+      - name: ticker
+        description: Stock ticker symbol.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["AAL", "GOOGL", "TSLA"]
+      - name: close
+        description: Closing price.
+        tests:
+          - not_null
+
+  - name: daily_returns
+    description: Daily percentage return per ticker.
+    columns:
+      - name: date
+        tests:
+          - not_null
+      - name: ticker
+        tests:
+          - not_null
+      - name: daily_return_pct
+        description: Percentage change from previous trading day close price.

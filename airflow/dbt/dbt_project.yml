@@ -1,0 +1,15 @@
+name: stock_market
+version: "1.0.0"
+profile: stock_market
+
+model-paths: ["models"]
+test-paths: ["tests"]
+
+models:
+  stock_market:
+    staging:
+      +schema: staging
+      +materialized: view
+    marts:
+      +schema: analytics
+      +materialized: table

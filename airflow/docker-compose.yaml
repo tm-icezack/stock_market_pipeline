@@ -361,5 +361,26 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
+  dbt:
+    build:
+      context: ./dbt
+      dockerfile: Dockerfile
+    image: stock_market_dbt:latest
+    working_dir: /usr/app/dbt
+    volumes:
+      - ./dbt:/usr/app/dbt
+    environment:
+      DBT_PROFILES_DIR: /usr/app/dbt
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: stock_market
+      DB_USER: airflow
+      DB_PASSWORD: airflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - dbt
+
 volumes:
   postgres-db-volume:

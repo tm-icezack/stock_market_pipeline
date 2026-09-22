@@ -1,0 +1,19 @@
+version: 2
+
+sources:
+  - name: staging
+    database: stock_market
+    schema: staging
+    tables:
+      - name: stg_stock_prices
+        description: Raw daily stock prices loaded by the Airflow pipeline.
+        columns:
+          - name: date
+            tests:
+              - not_null
+          - name: ticker
+            tests:
+              - not_null
+          - name: close
+            tests:
+              - not_null
