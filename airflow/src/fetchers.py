@@ -1,112 +1,189 @@
-import pandas as pd
-import yfinance as yf
+"""
+fetchers.py — Download stock-price data from Yahoo Finance and save as Parquet.
+
+Usage
+-----
+Daily (Airflow passes the logical execution date):
+    python3 fetchers.py --date 2026-09-12
+
+Backfill (downloads a full date range):
+    python3 fetchers.py --start 2024-01-01 --end 2026-09-12
+
+When running without arguments the script falls back to fetching the previous
+trading day, which is useful for local testing.
+"""
+
+import argparse
+import logging
+import sys
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import pandas as pd
+import yfinance as yf
 
-tickers = ["AAL", "TSLA", "GOOGL"]
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+log = logging.getLogger(__name__)
+
+TICKERS = ["AAL", "TSLA", "GOOGL"]
+OUTPUT_DIR = "/opt/airflow/raw_data"
+
+# Number of extra days fetched before the target date to account for
+# weekends and public holidays when markets are closed.
+LOOKBACK_DAYS = 3
 
 
-# -------------------------
-# EXTRACT ONLY (RAW)
-# -------------------------
+# ---------------------------------------------------------------------------
+# Core helpers
+# ---------------------------------------------------------------------------
 
+def _download(tickers: list[str], start: str, end: str) -> pd.DataFrame:
+    """Download data from Yahoo Finance and return a flat DataFrame."""
+    log.info("Downloading %s from %s to %s.", tickers, start, end)
 
-
-def fetch_raw_data(tickers):
-
-    end_date = datetime.today()
-    start_date = end_date - timedelta(days=780)
-
-    data = yf.download(
+    raw = yf.download(
         tickers,
-        start=start_date.strftime("%Y-%m-%d"),
-        end=end_date.strftime("%Y-%m-%d"),
+        start=start,
+        end=end,
         auto_adjust=False,
-        progress=False
+        progress=False,
     )
 
-    if data.empty:
-        raise ValueError("No data returned from yfinance")
+    if raw.empty:
+        raise ValueError(
+            f"Yahoo Finance returned no data for {tickers} between {start} and {end}."
+        )
 
-    return data
+    # Flatten MultiIndex columns (price type × ticker) into rows
+    df = raw.stack(level="Ticker").reset_index()
+
+    df["ingestion_timestamp"] = pd.Timestamp.now(tz="UTC")
+    df["data_source"] = "yfinance"
+
+    df.columns = (
+        df.columns.str.strip().str.lower().str.replace(" ", "_")
+    )
+
+    df["date"] = pd.to_datetime(df["date"]).dt.date
+    return df
 
 
-# -------------------------
-# LOAD (RAW SAVE) AND SAVE IN A DAILY FORMAT
-#check path and loads only missing  days
-# -------------------------
+def _save_parquet(df: pd.DataFrame, output_dir: str) -> int:
+    """
+    Write one Parquet file per trading date.
+    Overwrites an existing file so re-runs are idempotent.
+    Returns the number of files written.
+    """
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
 
-
-def load_raw_data(df, output_dir):
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    df["date"] = pd.to_datetime(df["date"])
-
-    for trade_date, daily_df in df.groupby(df["date"].dt.date):
-
-        file_path = output_dir / f"{trade_date}.parquet"
-
-        if file_path.exists():
-            print(f"Skipping {trade_date} - already exists")
-            continue
-
+    saved = 0
+    for trade_date, daily_df in df.groupby("date"):
+        file_path = out / f"{trade_date}.parquet"
         daily_df.to_parquet(file_path, index=False)
+        log.info("Saved %s (%d rows).", file_path.name, len(daily_df))
+        saved += 1
 
-        print(f"Saved {file_path}")
-
-# -------------------------
-# MAIN PIPELINE
-# -------------------------
-def main():
-
-    start_time = time.time()
-
-    # Extract only
-    raw_data = fetch_raw_data(tickers)
-
-    print("\nData preview:")
-    print(raw_data.head())
-
-    # Convert MultiIndex columns to rows
-    raw_data2 = (raw_data.stack(level="Ticker")
-               .reset_index())
-              
-    # add ingestion timestamp and data source columns
-    raw_data2['ingestion_timestamp'] = pd.Timestamp.now()
-    raw_data2['data_source'] = 'yfinance'
-    # convert all columns to SQL-friendly names
-    raw_data2.columns = (
-    raw_data2.columns
-    .str.strip()
-    .str.lower()
-    .str.replace(' ', '_'))
-
-    print(raw_data2.head()) 
+    return saved
 
 
-    # Save raw
-    # Shared directory mounted into every Airflow task container.
-    output_dir = "/opt/airflow/raw_data"
+# ---------------------------------------------------------------------------
+# Public entry points
+# ---------------------------------------------------------------------------
 
-    load_raw_data(raw_data2, output_dir)
+def fetch_for_date(target_date: date, output_dir: str = OUTPUT_DIR) -> None:
+    """
+    Fetch data for a single trading date (used by the daily Airflow task).
 
-    
+    Downloads target_date plus LOOKBACK_DAYS before it so that weekends
+    and holidays do not produce an empty result. Only the Parquet file for
+    target_date is written; earlier dates already exist from previous runs.
+    """
+    start = target_date - timedelta(days=LOOKBACK_DAYS)
+    end   = target_date + timedelta(days=1)   # yfinance end is exclusive
+
+    df = _download(TICKERS, start.isoformat(), end.isoformat())
+
+    # Keep only the target date; earlier days are already on disk.
+    df = df[df["date"] == target_date]
+
+    if df.empty:
+        log.warning(
+            "%s is not a trading day (weekend or holiday). Nothing saved.",
+            target_date,
+        )
+        return
+
+    saved = _save_parquet(df, output_dir)
+    log.info("fetch_for_date complete: %d file(s) written.", saved)
 
 
-    end_time = time.time()
+def fetch_range(start_date: date, end_date: date, output_dir: str = OUTPUT_DIR) -> None:
+    """
+    Fetch a full date range (used by the backfill DAG or local testing).
+    Overwrites existing Parquet files so the backfill is idempotent.
+    """
+    df = _download(TICKERS, start_date.isoformat(), end_date.isoformat())
+    saved = _save_parquet(df, output_dir)
+    log.info("fetch_range complete: %d file(s) written.", saved)
 
-    print("\nPipeline completed successfully!")
-    print(f"Execution time: {end_time - start_time:.2f} seconds")
 
-    files = sorted(Path(output_dir).glob("*.parquet"))
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
-    print(f"Successfully saved {len(files)} parquet files")
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
 
-    for f in files:
-        print(f.name)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--date",
+        metavar="YYYY-MM-DD",
+        help="Fetch data for a single trading date (daily mode).",
+    )
+    group.add_argument(
+        "--start",
+        metavar="YYYY-MM-DD",
+        help="Start date for a range fetch (backfill mode).",
+    )
+    parser.add_argument(
+        "--end",
+        metavar="YYYY-MM-DD",
+        help="End date for a range fetch (required with --start).",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    t0   = time.time()
+    args = _parse_args()
+
+    if args.date:
+        # Daily mode: Airflow passes {{ ds }}
+        target = datetime.strptime(args.date, "%Y-%m-%d").date()
+        fetch_for_date(target)
+
+    elif args.start:
+        # Backfill mode
+        if not args.end:
+            log.error("--end is required when using --start.")
+            sys.exit(1)
+        start = datetime.strptime(args.start, "%Y-%m-%d").date()
+        end   = datetime.strptime(args.end,   "%Y-%m-%d").date()
+        fetch_range(start, end)
+
+    else:
+        # Fallback for local testing: fetch yesterday
+        yesterday = date.today() - timedelta(days=1)
+        log.info("No date argument supplied; defaulting to yesterday (%s).", yesterday)
+        fetch_for_date(yesterday)
+
+    log.info("Total execution time: %.2fs.", time.time() - t0)
+
+
 if __name__ == "__main__":
     main()

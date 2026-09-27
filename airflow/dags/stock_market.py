@@ -46,11 +46,12 @@ with DAG(
 ) as dag:
 
     # ------------------------------------------------------------------
-    # 1. Extract: Yahoo Finance → Parquet files
+    # 1. Extract: Yahoo Finance → Parquet file for the scheduled date
+    #    {{ ds }} is the DAG's logical execution date (YYYY-MM-DD).
     # ------------------------------------------------------------------
     fetch_data = BashOperator(
         task_id="fetch_data",
-        bash_command="python3 /opt/airflow/src/fetchers.py",
+        bash_command="python3 /opt/airflow/src/fetchers.py --date {{ ds }}",
     )
 
     # ------------------------------------------------------------------
