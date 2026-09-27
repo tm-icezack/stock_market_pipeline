@@ -5,3 +5,7 @@ __pycache__/
 raw_data/
 airflow/logs/
 airflow/config/airflow.cfg
+dbt/profiles.yml
+airflow/dbt/target/
+airflow/dbt/logs/
+airflow/dbt/.user.yml
