@@ -9,3 +9,6 @@ dbt/profiles.yml
 airflow/dbt/target/
 airflow/dbt/logs/
 airflow/dbt/.user.yml
+airflow/dbt/target/
+airflow/dbt/logs/
+airflow/dbt/.user.yml
