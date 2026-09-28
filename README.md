@@ -47,8 +47,8 @@ FERNET_KEY=<generate-with-step-below>
 DB_HOST=postgres
 DB_PORT=5432
 DB_NAME=stock_market
-DB_USER=airflow
-DB_PASSWORD=airflow
+DB_USER=<your-db-user>
+DB_PASSWORD=<your-db-password>
 ```
 
 Generate a Fernet key:
@@ -86,8 +86,8 @@ docker compose --profile dbt build dbt
 
 | Service | URL / connection | Credentials |
 |---|---|---|
-| Airflow UI | http://localhost:8081 | `airflow` / `airflow` |
-| PostgreSQL (pgAdmin/DBeaver) | `127.0.0.1:5433` | `stock_market_admin` / `StockMarketLocal2026` |
+| Airflow UI | http://localhost:8081 | see `airflow/.env` |
+| PostgreSQL (pgAdmin/DBeaver) | `127.0.0.1:5433` | see `airflow/.env` |
 
 > **pgAdmin settings:** Host `127.0.0.1`, Port `5433`, Database `stock_market`
 

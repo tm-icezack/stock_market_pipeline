@@ -3,8 +3,8 @@ stock_market DAG — daily pipeline: fetch → load → dbt build
 
 Tasks
 -----
-fetch_data : Download ~780 days of AAL/TSLA/GOOGL from Yahoo Finance
-             and write one Parquet file per trading date to /opt/airflow/raw_data.
+fetch_data : Fetch Yahoo Finance data for the scheduled date and write a
+             Parquet file to /opt/airflow/raw_data.
 load_data  : Upsert Parquet files into staging.stg_stock_prices (idempotent).
 dbt_build  : Run dbt build inside the stock_market_dbt container:
              - stg_stock_prices (view)
@@ -12,6 +12,11 @@ dbt_build  : Run dbt build inside the stock_market_dbt container:
              - daily_returns    (table)
              - dbt data-quality tests
              If any test fails the task fails and the DAG is marked failed.
+
+Alerts
+------
+An email is sent to the configured address when any task fails after all
+retries are exhausted. Configure SMTP settings in docker-compose.yaml.
 """
 
 import os
@@ -20,21 +25,10 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 
+from common import default_args
+
 # The Compose network that connects Airflow workers to the dbt container.
-# Default: airflow_default  (project folder name + "_default")
 DOCKER_NETWORK = os.getenv("AIRFLOW_DOCKER_NETWORK", "airflow_default")
-
-# Path to the dbt project on the host, mounted into the dbt container.
-DBT_PROJECT_HOST_PATH = os.getenv(
-    "DBT_PROJECT_HOST_PATH",
-    "/opt/airflow/dbt",   # container-side path via volume mount
-)
-
-default_args = {
-    "retries": 2,
-    "retry_delay": timedelta(minutes=5),
-    "depends_on_past": False,
-}
 
 with DAG(
     dag_id="stock_market",

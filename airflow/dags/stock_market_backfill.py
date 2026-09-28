@@ -22,20 +22,17 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 
+from common import backfill_default_args
+
 BACKFILL_START = "2024-01-01"
 BACKFILL_END   = "2026-09-12"
-
-default_args = {
-    "retries": 1,
-    "retry_delay": timedelta(minutes=5),
-}
 
 with DAG(
     dag_id="stock_market_backfill",
     start_date=datetime(2024, 1, 1),
-    schedule=None,          # manual trigger only
+    schedule=None,
     catchup=False,
-    default_args=default_args,
+    default_args=backfill_default_args,
     tags=["stock_market", "backfill"],
     params={
         "start_date": BACKFILL_START,

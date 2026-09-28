@@ -78,6 +78,18 @@ x-airflow-common:
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     # The following line can be used to set a custom config file, stored in the local config folder
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
+    # ----------------------------------------------------------------
+    # Email / SMTP — alerts sent via Gmail App Password.
+    # Set AIRFLOW_SMTP_PASSWORD in airflow/.env (never commit it).
+    # ----------------------------------------------------------------
+    AIRFLOW__EMAIL__EMAIL_BACKEND: airflow.utils.email.send_email_smtp
+    AIRFLOW__SMTP__SMTP_HOST: smtp.gmail.com
+    AIRFLOW__SMTP__SMTP_STARTTLS: 'true'
+    AIRFLOW__SMTP__SMTP_SSL: 'false'
+    AIRFLOW__SMTP__SMTP_PORT: '587'
+    AIRFLOW__SMTP__SMTP_USER: ${AIRFLOW_SMTP_USER:-charlesisaac266@gmail.com}
+    AIRFLOW__SMTP__SMTP_PASSWORD: ${AIRFLOW_SMTP_PASSWORD}
+    AIRFLOW__SMTP__SMTP_MAIL_FROM: ${AIRFLOW_SMTP_USER:-charlesisaac266@gmail.com}
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
