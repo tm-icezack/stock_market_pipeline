@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  # -------------------------------------------------------------------------
+  # 1. Check Python syntax on all src/ and dags/ files
+  # -------------------------------------------------------------------------
+  syntax-check:
+    name: Python syntax check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check syntax
+        run: |
+          for f in \
+            airflow/src/fetchers.py \
+            airflow/src/loader.py \
+            airflow/dags/stock_market.py \
+            airflow/dags/stock_market_backfill.py \
+            airflow/dags/common.py; do
+            python -m py_compile "$f" && echo "OK  $f"
+          done
+
+  # -------------------------------------------------------------------------
+  # 2. Build the Airflow Docker image
+  # -------------------------------------------------------------------------
+  build-airflow:
+    name: Build Airflow image
+    runs-on: ubuntu-latest
+    needs: syntax-check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: docker build -t airflow-custom:ci airflow/
+
+  # -------------------------------------------------------------------------
+  # 3 & 4. Build the dbt Docker image and run dbt compile
+  # -------------------------------------------------------------------------
+  build-dbt:
+    name: Build dbt image and compile
+    runs-on: ubuntu-latest
+    needs: syntax-check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build dbt image
+        run: docker build -t stock_market_dbt:ci airflow/dbt/
+
+      - name: Write CI profiles.yml
+        # profiles.yml is gitignored; generate a placeholder for dbt compile.
+        # dbt compile resolves Jinja and validates SQL — it does not connect
+        # to the database, so the credentials here are irrelevant.
+        run: |
+          cat > airflow/dbt/profiles.yml << 'EOF'
+          stock_market:
+            target: dev
+            outputs:
+              dev:
+                type: postgres
+                host: localhost
+                port: 5432
+                user: ci_user
+                password: ci_password
+                dbname: stock_market
+                schema: analytics
+                threads: 1
+          EOF
+
+      - name: dbt compile
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/airflow/dbt:/usr/app/dbt \
+            -w /usr/app/dbt \
+            -e DBT_PROFILES_DIR=/usr/app/dbt \
+            stock_market_dbt:ci compile \
+              --profiles-dir /usr/app/dbt \
+              --project-dir /usr/app/dbt
